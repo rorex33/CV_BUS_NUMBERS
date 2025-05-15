@@ -31,7 +31,8 @@ for epoch in range(config['training']['epochs']):
         input_lengths = torch.full((images.size(0),), ocr_targets.size(1), dtype=torch.long).to(device)
 
         with torch.amp.autocast('cuda'):
-            total_loss, loss_cls, loss_bbox, loss_ocr = model.compute_losses(cls_out, cls_targets, bbox_out, bbox_targets, ocr_out, ocr_targets, ocr_lengths)
+            cls_out, bbox_out, ocr_out = model(images)
+            loss, loss_cls, loss_bbox, loss_ocr = model.compute_losses(cls_out, cls_targets, bbox_out, bbox_targets, ocr_out, ocr_targets, ocr_lengths)
 
 
         scaler.scale(loss).backward()
