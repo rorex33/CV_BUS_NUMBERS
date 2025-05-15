@@ -1,5 +1,5 @@
 model:
-  vocab: "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  vocab: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 image:
   size: 512
