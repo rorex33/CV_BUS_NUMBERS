@@ -1,14 +1,8 @@
 model:
-  vocab: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
+  vocab: "0123456789АВЕКМНОРСТУХ"
+training:
+  batch_size: 8
+  lr: 0.001
+  epochs: 100
 image:
   size: 512
-
-training:
-  batch_size: 4
-  lr: 0.001
-  epochs: 20
-
-thresholds:
-  unknown_cls: 0.6
-  ocr_conf: 0.4
