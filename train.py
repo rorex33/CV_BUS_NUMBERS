@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.nn.utils import clip_grad_norm_
 from dataset import VehicleDataset, collate_fn
-from multitask_vehicle_model import MultiTaskModel, focal_loss, smooth_l1_loss, ocr_ctc_loss
+from multitask_vehicle_model import MultiTaskModel, FocalLoss, smooth_l1_loss, ocr_ctc_loss
 
 import yaml
 import os
@@ -33,7 +33,7 @@ for epoch in range(config['training']['epochs']):
 
         with torch.amp.autocast('cuda'):
             cls_out, bbox_out, ocr_out = model(images)
-            loss_cls = focal_loss(cls_out, cls_targets)
+            loss_cls = FocalLoss(cls_out, cls_targets)
             loss_bbox = smooth_l1_loss(bbox_out, bbox_targets)
             loss_ocr = ocr_ctc_loss(ocr_out, ocr_targets, input_lengths, ocr_lengths)
             loss = loss_cls + loss_bbox + loss_ocr
