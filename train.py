@@ -1,0 +1,47 @@
+import torch
+from torch.utils.data import DataLoader
+from torch.optim import Adam
+from torch.nn.utils import clip_grad_norm_
+from dataset import VehicleDataset, collate_fn
+from multitask_vehicle_model import MultiTaskModel, focal_loss, smooth_l1_loss, ocr_ctc_loss
+
+import yaml
+import os
+
+
+with open("config.yaml") as f:
+    config = yaml.safe_load(f)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+vocab = config['model']['vocab']
+model = MultiTaskModel(num_classes=5, vocab_size=len(vocab) + 1).to(device)
+
+dataset = VehicleDataset(root_dir="data", vocab=vocab, image_size=config['image']['size'])
+dataloader = DataLoader(dataset, batch_size=config['training']['batch_size'], shuffle=True, collate_fn=collate_fn)
+
+optimizer = Adam(model.parameters(), lr=config['training']['lr'])
+scaler = torch.cuda.amp.GradScaler()
+
+for epoch in range(config['training']['epochs']):
+    model.train()
+    for images, cls_targets, bbox_targets, ocr_targets, ocr_lengths in dataloader:
+        images = images.to(device)
+        cls_targets = cls_targets.to(device)
+        bbox_targets = bbox_targets.to(device)
+        ocr_targets = ocr_targets.to(device)
+        input_lengths = torch.full((images.size(0),), ocr_targets.size(1), dtype=torch.long).to(device)
+
+        with torch.cuda.amp.autocast():
+            cls_out, bbox_out, ocr_out = model(images)
+            loss_cls = focal_loss(cls_out, cls_targets)
+            loss_bbox = smooth_l1_loss(bbox_out, bbox_targets)
+            loss_ocr = ocr_ctc_loss(ocr_out, ocr_targets, input_lengths, ocr_lengths)
+            loss = loss_cls + loss_bbox + loss_ocr
+
+        scaler.scale(loss).backward()
+        clip_grad_norm_(model.parameters(), max_norm=1.0)
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad()
+
+    print(f"Epoch {epoch + 1}, Total Loss: {loss.item():.4f}, CLS: {loss_cls.item():.4f}, BBOX: {loss_bbox.item():.4f}, OCR: {loss_ocr.item():.4f}")
