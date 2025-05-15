@@ -43,7 +43,7 @@ def main():
     scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     
     # Исправленный инициализатор GradScaler
-    scaler = torch.amp.GradScaler(device_type='cuda' if torch.cuda.is_available() else 'cpu')
+    scaler = torch.amp.GradScaler(device='cuda' if torch.cuda.is_available() else 'cpu')
 
     # Тренировочный цикл
     best_loss = float('inf')
