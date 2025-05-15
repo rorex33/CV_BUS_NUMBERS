@@ -25,6 +25,8 @@ dataloader = DataLoader(dataset, batch_size=config['training']['batch_size'], sh
 optimizer = Adam(model.parameters(), lr=config['training']['lr'])
 scaler = torch.amp.GradScaler('cuda')
 
+torch.cuda.empty_cache()
+
 # Тренировка
 for epoch in range(config['training']['epochs']):
     model.train()
