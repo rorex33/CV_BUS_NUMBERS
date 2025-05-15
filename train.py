@@ -20,7 +20,7 @@ dataset = VehicleDataset(root_dir="data", vocab=vocab, image_size=config['image'
 dataloader = DataLoader(dataset, batch_size=config['training']['batch_size'], shuffle=True, collate_fn=collate_fn)
 
 optimizer = Adam(model.parameters(), lr=config['training']['lr'])
-scaler = torch.cuda.amp.GradScaler()
+scaler = torch.amp.GradScaler('cuda')
 
 for epoch in range(config['training']['epochs']):
     model.train()
@@ -31,7 +31,7 @@ for epoch in range(config['training']['epochs']):
         ocr_targets = ocr_targets.to(device)
         input_lengths = torch.full((images.size(0),), ocr_targets.size(1), dtype=torch.long).to(device)
 
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast('cuda'):
             cls_out, bbox_out, ocr_out = model(images)
             loss_cls = focal_loss(cls_out, cls_targets)
             loss_bbox = smooth_l1_loss(bbox_out, bbox_targets)
