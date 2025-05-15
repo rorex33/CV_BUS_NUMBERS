@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.nn.utils import clip_grad_norm_
 from dataset import VehicleDataset, collate_fn
-from multitask_vehicle_model import MultiTaskModel, compute_losses
+from multitask_vehicle_model import MultiTaskModel
 import yaml
 import os
 
