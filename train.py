@@ -13,7 +13,7 @@ with open("config.yaml") as f:
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 vocab = config['model']['vocab']
-model = MultiTaskModel(num_classes=5, vocab_size=len(vocab) + 1).to(device)
+model = MultiTaskModel(num_classes=5, ocr_vocab_size=len(vocab) + 1).to(device)
 
 dataset = VehicleDataset(root_dir="data", vocab=vocab, image_size=config['image']['size'])
 dataloader = DataLoader(dataset, batch_size=config['training']['batch_size'], shuffle=True, collate_fn=collate_fn)
