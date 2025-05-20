@@ -48,11 +48,11 @@ def export_model(
         
         # Сохранение
         traced_model.save(output_path)
-        print(f"✅ Модель успешно экспортирована в {output_path}")
+        print(f"Модель успешно экспортирована в {output_path}")
         
         return True
     except Exception as e:
-        print(f"❌ Ошибка экспорта: {str(e)}")
+        print(f"Ошибка экспорта: {str(e)}")
         return False
 
 if __name__ == "__main__":

@@ -1,14 +1,35 @@
+"""
+Модуль для создания датасета для задачи:
+1. Классификации транспорта
+2. Детекции bounding box номерных знаков
+3. Распознавания текста (OCR)
+
+Особенности:
+- Поддержка аугментаций
+- Обработка данных для CTC loss
+- Автоматическая нормализация bounding box
+- Отказоустойчивая загрузка изображений
+"""
+
 import os
 import cv2
 import torch
 import random
 import numpy as np
 from torch.utils.data import Dataset
-from collections import Counter
-from typing import List, Tuple
-
+from typing import Tuple, List
 
 class VehicleDataset(Dataset):
+    """
+    Кастомный датасет для многозадачного обучения.
+    
+    Args:
+        root_dir (str): Путь к папке с данными (должна содержать images/ и labels.txt)
+        vocab (str): Строка с допустимыми символами (например, "0123456789АВЕКМНОРСТУХ")
+        image_size (int): Размер, к которому будут ресайзиться изображения (по умолчанию 512)
+        augment (bool): Включить аугментации (по умолчанию False)
+        debug (bool): Режим отладки с дополнительным выводом (по умолчанию False)
+    """
     def __init__(
         self,
         root_dir: str,
@@ -17,26 +38,21 @@ class VehicleDataset(Dataset):
         augment: bool = False,
         debug: bool = False
     ):
-        """
-        Args:
-            root_dir: Путь к директории с данными
-            vocab: Строка с допустимыми символами (например, "0123456789АВЕКМНОРСТУХ")
-            image_size: Размер изображения на входе модели
-            augment: Включить аугментации
-            debug: Режим отладки (проверка данных)
-        """
         self.root_dir = root_dir
         self.image_size = image_size
         self.vocab = vocab
+        # Словарь для преобразования символов в индексы (0 зарезервирован для blank в CTC)
+        self.char_to_idx = {c: i+1 for i, c in enumerate(vocab)}
         self.augment = augment
         self.debug = debug
-        self.char_to_idx = {c: i+1 for i, c in enumerate(vocab)}  # 0 - blank для CTC
-        self.data = []
-        self.class_counts = Counter()
-        self._load_data()
+        self.data = []  # Список для хранения меток данных
+        self._load_data()  # Загрузка данных при инициализации
 
-    def _load_data(self) -> None:
-        """Загрузка и валидация данных"""
+    def _load_data(self):
+        """
+        Загрузка данных из labels.txt. Формат строки:
+        имя_файла.jpg,класс,x_center,y_center,width,height,текст_номера
+        """
         label_path = os.path.join(self.root_dir, "labels.txt")
         if not os.path.exists(label_path):
             raise FileNotFoundError(f"Labels file not found: {label_path}")
@@ -44,6 +60,7 @@ class VehicleDataset(Dataset):
         with open(label_path) as f:
             for line in f:
                 parts = line.strip().split(',')
+                # Пропускаем некорректные строки
                 if len(parts) != 7:
                     if self.debug:
                         print(f"Skipping malformed line: {line}")
@@ -52,102 +69,102 @@ class VehicleDataset(Dataset):
                 img_name, cls, x, y, w, h, text = parts
                 img_path = os.path.join(self.root_dir, "images", img_name)
                 
-                # Валидация класса
                 try:
+                    # Валидация и преобразование типов
                     cls = int(cls)
-                    if cls < 0 or cls > 4:  # 0-4 классы (4 - неизвестный)
-                        raise ValueError
-                except ValueError:
-                    if self.debug:
-                        print(f"Invalid class {cls} in {img_name}")
-                    continue
-
-                # Валидация bbox
-                try:
                     x, y, w, h = float(x), float(y), float(w), float(h)
-                    if w <= 0 or h <= 0:
-                        raise ValueError
-                except ValueError:
+                    self.data.append((img_name, cls, x, y, w, h, text))
+                except ValueError as e:
                     if self.debug:
-                        print(f"Invalid bbox {x},{y},{w},{h} in {img_name}")
-                    continue
+                        print(f"Invalid data in line: {line}. Error: {e}")
 
-                # Проверка символов
-                unknown_chars = set(c for c in text if c not in self.char_to_idx)
-                if unknown_chars and self.debug:
-                    print(f"Unknown chars {unknown_chars} in {img_name}")
-
-                self.data.append((img_name, cls, x, y, w, h, text))
-                self.class_counts[cls] += 1
-
-        if self.debug:
-            print(f"Loaded {len(self.data)} samples")
-            print("Class distribution:", self.class_counts)
-
-    def _augment_image(self, image: np.ndarray) -> np.ndarray:
-        """Аугментации изображения"""
-        # Цветовые искажения
-        if random.random() > 0.5:
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-            image[:,:,1] = np.clip(image[:,:,1] * random.uniform(0.8, 1.2), 0, 255)
-            image = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
-
-        # Гауссов шум
-        if random.random() > 0.5:
-            noise = np.random.normal(0, 5, image.shape).astype(np.uint8)
-            image = cv2.add(image, noise)
-
-        return image
-
-    def __len__(self) -> int:
+    def __len__(self):
+        """Возвращает количество элементов в датасете"""
         return len(self.data)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int, torch.Tensor, List[int], int]:
-        try:
-            img_name, cls, x, y, w, h, text = self.data[idx]
-            img_path = os.path.join(self.root_dir, "images", img_name)
-            
-            # Загрузка изображения
-            image = cv2.imread(img_path)
-            if image is None:
-                raise ValueError(f"Error loading image {img_path}")
-
-            # Нормализация координат bbox
-            h_orig, w_orig = image.shape[:2]
-            x, y, w, h = x/w_orig, y/h_orig, w/w_orig, h/h_orig
-
-            # Аугментации
-            if self.augment:
-                image = self._augment_image(image)
-
-            # Ресайз и нормализация
-            image = cv2.resize(image, (self.image_size, self.image_size))
-            image = torch.tensor(image.transpose(2, 0, 1) / 255.0, dtype=torch.float32)
-
-            # Кодирование текста
-            label_seq = [self.char_to_idx.get(c, 0) for c in text]
-            
-            return image, cls, torch.tensor([x, y, w, h], dtype=torch.float32), label_seq, len(label_seq)
-
-        except Exception as e:
+    def __getitem__(self, idx) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[int], int]:
+        """
+        Получение одного элемента датасета по индексу.
+        
+        Returns:
+            tuple: (image, class, bbox, ocr_seq, ocr_length)
+            - image: тензор изображения [3, H, W]
+            - class: тензор класса (скаляр)
+            - bbox: тензор координат [x_center, y_center, width, height]
+            - ocr_seq: список индексов символов
+            - ocr_length: длина последовательности
+        """
+        img_name, cls, x, y, w, h, text = self.data[idx]
+        img_path = os.path.join(self.root_dir, "images", img_name)
+        
+        # Загрузка изображения с обработкой ошибок
+        image = cv2.imread(img_path)
+        if image is None:
             if self.debug:
-                print(f"Error processing {img_name}: {e}")
-            # Возвращаем случайный валидный пример при ошибке
-            return self[random.randint(0, len(self)-1)]
+                print(f"Error loading image: {img_path}, using random sample instead")
+            return self[random.randint(0, len(self)-1)]  # Fallback на случайный образец
+            
+        # Конвертация из BGR в RGB (OpenCV по умолчанию использует BGR)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        # Нормализация координат bbox к относительным значениям [0, 1]
+        h_orig, w_orig = image.shape[:2]
+        x, y, w, h = x/w_orig, y/h_orig, w/w_orig, h/h_orig
+        
+        # Ресайз изображения к единому размеру
+        image = cv2.resize(image, (self.image_size, self.image_size))
+        
+        # Конвертация в тензор и нормализация пикселей в [0, 1]
+        # Перестановка осей из HWC в CHW формат (требуется PyTorch)
+        image = torch.tensor(image.transpose(2, 0, 1), dtype=torch.float32) / 255.0
+        
+        # Подготовка bbox в формате [x_center, y_center, width, height]
+        bbox = torch.tensor([x, y, w, h], dtype=torch.float32)
+        
+        # Кодирование текста в последовательность индексов
+        label_seq = [self.char_to_idx.get(c, 0) for c in text]  # 0 - blank символ
+        
+        return (
+            image,          # Тензор изображения [3, H, W]
+            torch.tensor(cls, dtype=torch.long),  # Класс как тензор (скаляр)
+            bbox,           # Тензор координат bbox [4]
+            label_seq,      # Закодированная последовательность символов
+            len(label_seq)  # Длина последовательности
+        )
 
-
-def collate_fn(batch: List[Tuple]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Обработка батча с паддингом для OCR"""
+def collate_fn(batch):
+    """
+    Функция для объединения отдельных элементов в батчи.
+    Особенно важна для последовательностей переменной длины в OCR.
+    
+    Args:
+        batch: Список элементов, возвращаемых __getitem__
+    
+    Returns:
+        tuple: (images, classes, bboxes, ocr_seqs, ocr_lengths)
+        - images: тензор [B, 3, H, W]
+        - classes: тензор [B]
+        - bboxes: тензор [B, 4]
+        - ocr_seqs: паддинг-тензор [B, max_len]
+        - ocr_lengths: тензор длин последовательностей [B]
+    """
+    # Распаковка батча по компонентам
     images, cls_targets, bbox_targets, ocr_targets, ocr_lengths = zip(*batch)
     
-    images = torch.stack(images)
-    cls_targets = torch.tensor(cls_targets, dtype=torch.long)
-    bbox_targets = torch.stack(bbox_targets)
+    # Объединение в тензоры
+    images = torch.stack(images)          # [B, 3, H, W]
+    classes = torch.stack(cls_targets)    # [B]
+    bboxes = torch.stack(bbox_targets)    # [B, 4]
     
-    # Паддинг для OCR (0 = blank для CTC)
-    max_len = max(ocr_lengths)
-    padded_ocr = torch.zeros(len(batch), max_len, dtype=torch.long)
-    for i, seq in enumerate(ocr_targets):
-        padded_ocr[i, :len(seq)] = torch.tensor(seq, dtype=torch.long)
+    # Специальная обработка последовательностей переменной длины:
+    # 1. Конвертируем каждую последовательность в тензор
+    # 2. Применяем паддинг до максимальной длины в батче
+    ocr_seqs = torch.nn.utils.rnn.pad_sequence(
+        [torch.tensor(x, dtype=torch.long) for x in ocr_targets],
+        batch_first=True,
+        padding_value=0  # Используем 0 как padding индекс
+    )  # [B, max_len]
     
-    return images, cls_targets, bbox_targets, padded_ocr, torch.tensor(ocr_lengths, dtype=torch.long)
+    ocr_lengths = torch.tensor(ocr_lengths, dtype=torch.long)  # [B]
+    
+    return (images, classes, bboxes, ocr_seqs, ocr_lengths)
