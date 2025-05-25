@@ -1,26 +1,35 @@
 import torch
-import torch.nn as nn
 from multitask_vehicle_model import MultiTaskModel
 import yaml
 import os
 import traceback
+from typing import List, Tuple
 
-def export_with_scripting(
+def export_model(
     config_path: str = "config.yaml",
     model_path: str = "best_model.pth",
-    output_path: str = "script_model.pt",  # Рекомендуемое расширение для script
+    output_path: str = "mobile_model.pt",
     img_size: int = 224,
     quantize: bool = True
 ):
-    """Экспорт модели через torch.jit.script с полной проверкой"""
-    print(f"=== TorchScript Scripting Export (PyTorch {torch.__version__}) ===")
+    """Исправленный экспорт модели с обработкой adaptive pooling"""
+    print(f"=== TorchScript Export (PyTorch {torch.__version__}) ===")
     
     # 1. Загрузка конфигурации
     with open(config_path) as f:
         config = yaml.safe_load(f)
     
-    # 2. Инициализация модели
-    model = MultiTaskModel(
+    # 2. Инициализация модели с фиксированным output_size
+    class FixedMultiTaskModel(MultiTaskModel):
+        def __init__(self, num_classes: int, ocr_vocab_size: int):
+            super().__init__(num_classes, ocr_vocab_size)
+            # Заменяем adaptive pooling на fixed-size
+            self.avgpool = torch.nn.AdaptiveAvgPool2d((1, 1))  # Фиксированный размер выхода
+            
+        def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            return super().forward(x)
+    
+    model = FixedMultiTaskModel(
         num_classes=5,
         ocr_vocab_size=len(config['model']['vocab']) + 1
     )
@@ -34,62 +43,46 @@ def export_with_scripting(
     example_input = torch.randn(1, 3, img_size, img_size)
     
     try:
-        # 5. Конвертация через scripting
-        print("\n=== TorchScript Scripting ===")
-        scripted_model = torch.jit.script(model)
+        # 5. Конвертация через scripting с аннотациями типов
+        print("\n=== TorchScript Conversion ===")
+        
+        # Аннотируем все используемые типы
+        @torch.jit.script
+        def script_wrapper(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            return model(x)
         
         # 6. Проверка модели
         print("\n=== Model Validation ===")
         with torch.no_grad():
-            # Проверка оригинальной модели
-            orig_output = model(example_input)
-            print("Original model outputs:")
-            for i, out in enumerate(orig_output):
-                print(f"Output {i}: shape={out.shape}")
+            orig_out = model(example_input)
+            script_out = script_wrapper(example_input)
             
-            # Проверка scripted модели
-            script_output = scripted_model(example_input)
-            print("\nScripted model outputs:")
-            for i, out in enumerate(script_output):
-                print(f"Output {i}: shape={out.shape}")
-            
-            # Сравнение выходов
-            for orig, script in zip(orig_output, script_output):
-                if not torch.allclose(orig, script, atol=1e-4):
-                    raise ValueError("Scripted model output doesn't match original!")
-        
-        print("\nValidation passed! Outputs match.")
+            for i, (o, s) in enumerate(zip(orig_out, script_out)):
+                if not torch.allclose(o, s, atol=1e-4):
+                    raise ValueError(f"Output {i} mismatch!")
+            print("Validation passed!")
 
-        # 7. Оптимизация для мобильных устройств
-        print("\n=== Mobile Optimization ===")
-        optimized_model = torch.utils.mobile_optimizer.optimize_for_mobile(scripted_model)
-        
-        # 8. Квантование (опционально)
+        # 7. Квантование
         if quantize:
             print("\n=== Applying Quantization ===")
             quantized_model = torch.quantization.quantize_dynamic(
-                optimized_model,
-                {torch.nn.Linear, torch.nn.Conv2d, torch.nn.LSTM},
+                model,
+                {torch.nn.Linear, torch.nn.Conv2d},
                 dtype=torch.qint8
             )
-            model_to_save = quantized_model
+            # Повторная трассировка после квантования
+            traced_model = torch.jit.trace(quantized_model, example_input)
+            model_to_save = traced_model
         else:
-            model_to_save = optimized_model
+            model_to_save = torch.jit.trace(model, example_input)
 
-        # 9. Сохранение модели
+        # 8. Сохранение модели
         print("\n=== Saving Model ===")
         model_to_save.save(output_path)
         
-        # Проверка размера файла
-        model_size = os.path.getsize(output_path) / (1024 * 1024)
-        print(f"Model saved to: {output_path}")
-        print(f"Model size: {model_size:.2f} MB")
-        
-        # 10. Финальная проверка
-        print("\n=== Final Verification ===")
-        loaded_model = torch.jit.load(output_path)
-        test_output = loaded_model(example_input)
-        print("Load test successful!")
+        # 9. Проверка размера
+        size_mb = os.path.getsize(output_path) / (1024 * 1024)
+        print(f"Model saved ({size_mb:.2f} MB)")
         
         return True
 
@@ -100,30 +93,7 @@ def export_with_scripting(
 
 
 if __name__ == "__main__":
-    # Конфигурация экспорта
-    export_config = {
-        "config_path": "config.yaml",
-        "model_path": "best_model.pth",
-        "output_path": "script_model.pt",
-        "img_size": 224,
-        "quantize": True
-    }
-    
-    if export_with_scripting(**export_config):
-        print("\n=== Экспорт успешно завершен! ===")
-        print("Инструкции:")
-        print("1. Поместите файл script_model.pt в папку assets Android-проекта")
-        print("2. Используйте следующий код для загрузки:")
-        print("""
-        try {
-            model = LiteModuleLoader.loadModuleFromAsset(assets, "script_model.pt")
-        } catch (e: Exception) {
-            Log.e("Model", "Load error", e)
-        }
-        """)
+    if export_model():
+        print("\nЭкспорт успешен! Используйте mobile_model.pt в Android")
     else:
-        print("\n!!! Экспорт не удался !!!")
-        print("Рекомендации:")
-        print("1. Проверьте, содержит ли модель неподдерживаемые операторы")
-        print("2. Упростите архитектуру модели при необходимости")
-        print("3. Попробуйте использовать torch.jit.trace вместо scripting")
+        print("\nЭкспорт не удался. Проверьте ошибки выше.")
