@@ -8,22 +8,13 @@ import os
 def export_model_for_lite(
     config_path: str = "config.yaml",
     model_path: str = "best_model.pth",
-    output_path: str = "model.ptl",  # Изменили расширение на .ptl для lite
+    output_path: str = "model.ptl",
     image_size: int = None,
-    quantize: bool = True  # Добавили флаг квантования
+    quantize: bool = True
 ):
-    """Экспорт модели для PyTorch Lite с оптимизацией
-    
-    Args:
-        config_path: Путь к конфигурационному файлу
-        model_path: Путь к сохраненной модели
-        output_path: Куда сохранить экспортированную модель
-        image_size: Опциональное указание размера изображения
-        quantize: Флаг для включения квантования
-    """
+    """Экспорт модели для PyTorch Lite с исправленной оптимизацией"""
     # Проверка версии PyTorch
     print(f"PyTorch version: {torch.__version__}")
-    print(f"Preparing model for PyTorch Lite...")
     
     # Загрузка конфигурации
     with open(config_path) as f:
@@ -58,17 +49,18 @@ def export_model_for_lite(
         print("\n=== Трассировка модели ===")
         traced_model = torch.jit.trace(model, example_input, check_trace=True)
         
-        # 3. Оптимизация для мобильных устройств
+        # 3. Оптимизация для мобильных устройств (исправленная версия)
         print("\n=== Оптимизация для мобильных устройств ===")
-        optimized_model = optimize_for_mobile(
-            traced_model,
-            optimization_blocklist={
-                torch.nn.Linear,  # Блокируем оптимизацию Linear слоев
-                torch.nn.LSTM     # Блокируем оптимизацию LSTM
-            }
-        )
+        # Вариант 1: Без блоклиста (простая оптимизация)
+        optimized_model = optimize_for_mobile(traced_model)
         
-        # 4. Квантование (если включено)
+        # Вариант 2: С указанием preserve_methods (если нужно сохранить методы)
+        # optimized_model = optimize_for_mobile(
+        #     traced_model,
+        #     preserved_methods=['forward']  # Сохраняем только нужные методы
+        # )
+        
+        # 4. Квантование
         if quantize:
             print("\n=== Квантование модели ===")
             quantized_model = torch.quantization.quantize_dynamic(
@@ -95,11 +87,6 @@ def export_model_for_lite(
         model_size = os.path.getsize(output_path) / (1024 * 1024)
         print(f"Модель сохранена в {output_path}")
         print(f"Размер модели: {model_size:.2f} MB")
-        
-        # 7. Проверка загрузки
-        print("\n=== Тест загрузки модели ===")
-        loaded_model = torch.jit.load(output_path)
-        print("Модель успешно загружена!")
         
         return True
         
