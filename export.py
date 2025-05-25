@@ -47,7 +47,7 @@ def export_model(
         
         # Дополнительная валидация
         test_output = traced_model(example_input)
-        assert np.allclose(cls_out.numpy(), test_output[0].numpy(), atol=1e-5)
+        assert np.allclose(cls_out.detach().numpy(), test_output[0].detach().numpy(), atol=1e-5)
         
         # Сохранение
         traced_model.save(output_path)
