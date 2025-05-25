@@ -5,8 +5,8 @@ import numpy as np
 
 def export_model(
     config_path: str = "config.yaml",
-    model_path: str = "model.pth",
-    output_path: str = "multitask_model.pt",
+    model_path: str = "best_model.pth",
+    output_path: str = "model.pt",
     image_size: int = None
 ):
     """Экспорт модели с валидацией
@@ -26,7 +26,10 @@ def export_model(
     
     # Инициализация модели
     model = MultiTaskModel(num_classes=5, ocr_vocab_size=len(vocab)+1)
-    model.load_state_dict(torch.load(model_path, map_location="cpu"))
+    
+    # Загрузка весов (исправленная версия)
+    checkpoint = torch.load(model_path, map_location="cpu")
+    model.load_state_dict(checkpoint['model_state_dict'])  # <-- Извлекаем только веса модели
     model.eval()
     
     # Подготовка примера ввода
