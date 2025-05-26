@@ -3,7 +3,22 @@ from multitask_vehicle_model import MultiTaskModel
 import yaml
 
 def export_model():
-    """Экспорт multitask-модели в TorchScript"""
+    """
+    Экспорт multitask-модели в формат TorchScript.
+    
+    Процесс включает:
+    1. Загрузку конфигурации модели из YAML-файла
+    2. Инициализацию модели и загрузку обученных весов
+    3. Компиляцию модели с использованием torch.jit.script
+    4. Сохранение скомпилированной модели в файл
+    
+    Сохраняет:
+    - model.pt: TorchScript-совместимая версия модели
+    
+    Raises:
+        FileNotFoundError: Если отсутствуют конфигурационный файл или файл весов
+        RuntimeError: При проблемах с загрузкой весов или компиляцией модели
+    """
     # 1. Загрузка конфигурации
     with open("config.yaml") as f:
         config = yaml.safe_load(f)

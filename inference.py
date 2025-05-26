@@ -5,7 +5,21 @@ from multitask_vehicle_model import MultiTaskModel
 import yaml
 
 def decode_ctc(pred, vocab, blank_index=36):
-    """Декодирование выхода OCR с учетом blank символа"""
+    """
+    Декодирование выхода OCR-модуля с использованием алгоритма CTC (Connectionist Temporal Classification).
+    
+    Args:
+        pred (torch.Tensor): Выходной тензор модели OCR размерности [B, T, C] или [T, C]
+        vocab (str): Строка с допустимыми символами (словарь)
+        blank_index (int): Индекс blank-символа (по умолчанию 36)
+    
+    Returns:
+        str: Распознанная текстовая строка или "Не распознано" при отсутствии валидных символов
+    
+    Note:
+        - Удаляет повторяющиеся символы и blank-символы
+        - Поддерживает обработку как батча, так и одиночного примера
+    """
     if pred.dim() == 3:  # Если размерность [B, T, C]
         pred = pred.squeeze(0)  # Удаляем batch dimension [T, C]
     pred = pred.argmax(dim=-1)  # Получаем индексы символов
@@ -24,6 +38,25 @@ def decode_ctc(pred, vocab, blank_index=36):
     return ''.join(result) if result else "Не распознано"
 
 def main():
+    """
+    Основная функция для инференса модели в реальном времени.
+    
+    Функционал:
+    1. Загрузка конфигурации и инициализация модели
+    2. Захват видео с камеры
+    3. Препроцессинг кадров
+    4. Многозадачный инференс (классификация, детекция bbox, OCR)
+    5. Визуализация результатов
+    
+    Используемые компоненты:
+    - OpenCV для работы с видео
+    - PyTorch для выполнения модели
+    - YAML для конфигурации
+    
+    Note:
+        - Поддерживается отладка через тестовое изображение
+        - Выводит расширенную отладочную информацию
+    """
     # Загрузка конфигурации
     with open("config.yaml") as f:
         config = yaml.safe_load(f)
@@ -121,7 +154,7 @@ def main():
             cv2.putText(frame, "Неверный bbox", (20, 40),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
 
-        ###
+        # Отладочная информация
         print("\n--- Raw Model Output ---")
         print(f"Class probs: {cls_probs.detach().cpu().numpy()}")
         print(f"Predicted class: {label} ({class_mapping[label]})")
@@ -129,23 +162,21 @@ def main():
         print(f"OCR output shape: {ocr_out.shape}")
 
         debug_text = [
-        f"Model debug:",
-        f"Class: {label} ({class_mapping[label]}) Conf: {conf:.2f}",
-        f"BBox: {x1},{y1}-{x2},{y2}",
-        f"OCR: {ocr_text}"
+            f"Model debug:",
+            f"Class: {label} ({class_mapping[label]}) Conf: {conf:.2f}",
+            f"BBox: {x1},{y1}-{x2},{y2}",
+            f"OCR: {ocr_text}"
         ]
 
         for i, text in enumerate(debug_text):
             cv2.putText(frame, text, (10, 30 + i*30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
             
-        
-        # Временно замените видеопоток на тестовое изображение
-        test_img = cv2.imread("./data/train/images/89981.jpg")  # положите в папку с примером транспорта
+        # Режим отладки с тестовым изображением
+        test_img = cv2.imread("./data/train/images/89981.jpg")
         if test_img is not None:
             frame = cv2.resize(test_img, (img_size, img_size))
             print(">>> Using test image instead of camera feed!")
-        ###
         
         cv2.imshow("Vehicle Detection", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
