@@ -22,7 +22,7 @@ def export_model():
 
     # 4. Сохранение модели
     scripted_model.save("model.pt")
-    print("✅ TorchScript-модель успешно сохранена в model.pt")
+    print("TorchScript-модель успешно сохранена в model.pt")
 
 if __name__ == "__main__":
     export_model()
