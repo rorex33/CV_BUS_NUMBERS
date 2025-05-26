@@ -119,7 +119,7 @@ class MultiTaskModel(nn.Module):
         # Обработка LSTM
         ocr_feat, _ = self.ocr_lstm(ocr_feat)  # [B, W, 32]
         
-        # Механизм внимания
+        # Механизм внимания - не совместимо с TorchScript
         #attention_weights = self.ocr_attention(ocr_feat)  # [B, W, 1]
         #attended_features = (ocr_feat * attention_weights).sum(dim=1)  # [B, 32]
         # Финальная классификация
@@ -132,7 +132,7 @@ class MultiTaskModel(nn.Module):
     def compute_losses(self, cls_out, bbox_out, ocr_out, cls_target, bbox_target, ocr_target, ocr_lengths):
         """
         Вычисление всех функций потерь:
-        1. Focal Loss для классификации
+        1. Cross Entropy для классификации
         2. Smooth L1 Loss для регрессии bbox
         3. CTC Loss для OCR
         """
@@ -158,27 +158,6 @@ class MultiTaskModel(nn.Module):
         loss_ocr = self.ocr_ctc_loss(ocr_out, ocr_target, ocr_lengths)  # OCR
     
         return loss_cls + loss_bbox + loss_ocr, loss_cls, loss_bbox, loss_ocr
-
-    def focal_loss(self, inputs, targets, alpha=0.8, gamma=2, reduction='mean'):
-        """
-        Focal Loss для борьбы с дисбалансом классов
-        Параметры:
-        - alpha: вес для сложных примеров
-        - gamma: степень фокусировки
-        """
-        ce_loss = F.cross_entropy(inputs, targets, reduction='none')
-        pt = torch.exp(-ce_loss)  # Вероятность правильного класса
-        focal_loss = alpha * (1 - pt) ** gamma * ce_loss
-        return focal_loss.mean()
-
-    def smooth_l1_loss(self, inputs, targets, beta=0.1, reduction='mean'):
-        """
-        Smooth L1 Loss (менее чувствителен к выбросам, чем MSE)
-        Параметр beta определяет переход между L1 и L2
-        """
-        diff = torch.abs(inputs - targets)
-        loss = torch.where(diff < beta, 0.5 * diff ** 2 / beta, diff - 0.5 * beta)
-        return loss.mean()
 
     def ocr_ctc_loss(self, ocr_out, ocr_target, target_lengths):
         """
