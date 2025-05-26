@@ -120,11 +120,12 @@ class MultiTaskModel(nn.Module):
         ocr_feat, _ = self.ocr_lstm(ocr_feat)  # [B, W, 32]
         
         # Механизм внимания
-        attention_weights = self.ocr_attention(ocr_feat)  # [B, W, 1]
-        attended_features = (ocr_feat * attention_weights).sum(dim=1)  # [B, 32]
-        
+        #attention_weights = self.ocr_attention(ocr_feat)  # [B, W, 1]
+        #attended_features = (ocr_feat * attention_weights).sum(dim=1)  # [B, 32]
         # Финальная классификация
-        ocr_out = self.ocr_fc(attended_features).unsqueeze(1)  # [B, 1, vocab_size]
+        #ocr_out = self.ocr_fc(attended_features).unsqueeze(1)  # [B, 1, vocab_size]
+
+        ocr_out = self.ocr_fc(ocr_feat)                   # (B, W, vocab_size)
 
         return cls_out, bbox_out, ocr_out
 
