@@ -80,7 +80,7 @@ class MultiTaskModel(nn.Module):
         # ------------------------------------------
         # 4. Головка OCR с механизмом внимания
         # ------------------------------------------
-        self.ocr_pool = nn.AdaptiveAvgPool2d((1, None))  # Сохраняет ширину
+        #self.ocr_pool = nn.AdaptiveAvgPool2d((1, None))  # Сохраняет ширину
         self.ocr_feat_proj = nn.Linear(512, 64)          # Проекция признаков
         self.ocr_lstm = nn.LSTM(64, 32, batch_first=True, bidirectional=False)
         
@@ -111,7 +111,8 @@ class MultiTaskModel(nn.Module):
 
         # 4. Распознавание текста
         # Подготовка признаков
-        ocr_feat = self.ocr_pool(features)  # [B, 512, 1, W]
+        #ocr_feat = self.ocr_pool(features)  # [B, 512, 1, W]
+        ocr_feat = F.adaptive_avg_pool2d(features, (1, features.size(3)))  # [B, 512, 1, W]
         ocr_feat = ocr_feat.squeeze(2).permute(0, 2, 1)  # [B, W, 512]
         ocr_feat = self.ocr_feat_proj(ocr_feat)  # [B, W, 64]
         
