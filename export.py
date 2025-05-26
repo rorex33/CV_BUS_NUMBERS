@@ -21,7 +21,7 @@ def export_model():
     scripted_model = torch.jit.script(model)
 
     # 4. Сохранение модели
-    scripted_model.save("model.pt")
+    torch.jit._save_for_lite_interpreter(scripted_model, "model.pt")
     print("TorchScript-модель успешно сохранена в model.pt")
 
 if __name__ == "__main__":
