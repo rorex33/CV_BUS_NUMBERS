@@ -81,8 +81,14 @@ class MultiTaskModel(nn.Module):
         # ------------------------------------------
         self.bbox_head = nn.Sequential(
             nn.Conv2d(512, 64, 3, padding=1),  # Локальные признаки
+            nn.ReLU(),
+            nn.Conv2d(256, 128, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(64 * 32 * 32, 4),        # Регрессия координат
+            nn.Linear(64, 4),        # Регрессия координат
             nn.Sigmoid()                       # Нормализация в [0, 1]
         )
 
@@ -171,7 +177,8 @@ class MultiTaskModel(nn.Module):
             loss_cls = F.cross_entropy(cls_out, cls_target)
         else:
             loss_cls = torch.tensor(0.0, device=cls_out.device)
-        loss_bbox = F.smooth_l1_loss(bbox_out, bbox_target)  # Регрессия
+        #loss_bbox = F.smooth_l1_loss(bbox_out, bbox_target)  # Регрессия
+        loss_bbox = F.mse_loss(bbox_out, bbox_target) * 10 # Регрессия
         loss_ocr = self.ocr_ctc_loss(ocr_out, ocr_target, ocr_lengths)  # OCR
     
         return loss_cls + loss_bbox + loss_ocr, loss_cls, loss_bbox, loss_ocr
@@ -221,26 +228,6 @@ class MultiTaskModel(nn.Module):
             blank=self.ocr_vocab_size - 1,
             zero_infinity=True
         )
-
-        '''
-        # Подготовка входов
-        ocr_out = ocr_out.permute(1, 0, 2)  # [1, B, vocab_size]
-        input_lengths = torch.full(
-            size=(ocr_out.size(1),),
-            fill_value=ocr_out.size(0),
-            dtype=torch.long,
-            device=ocr_out.device
-        )
-        
-        return F.ctc_loss(
-            log_probs=ocr_out.log_softmax(dim=2),  # CTC требует log_softmax
-            targets=ocr_target,
-            input_lengths=input_lengths,
-            target_lengths=target_lengths,
-            blank=self.ocr_vocab_size - 1,
-            zero_infinity=True
-        )
-        '''
 
     def predict(self, x, cls_threshold=0.6, ocr_confidence_threshold=0.4):
         """
