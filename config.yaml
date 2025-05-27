@@ -3,6 +3,6 @@ model:
 training:
   batch_size: 8
   lr: 0.001
-  epochs: 100
+  epochs: 30
 image:
   size: 512
