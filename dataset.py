@@ -109,6 +109,32 @@ class VehicleDataset(Dataset):
         
         # Нормализация координат bbox к относительным значениям [0, 1]
         h_orig, w_orig = image.shape[:2]
+
+        # Аугментация
+        if self.augment:
+            # Случайное отражение по горизонтали (50% chance)
+            if random.random() > 0.5:
+                image = cv2.flip(image, 1)
+                x = 1.0 - x  # Корректируем bbox
+
+            # Случайный поворот (+/- 15 градусов)
+            if random.random() > 0.7:
+                angle = random.uniform(-15, 15)
+                M = cv2.getRotationMatrix2D((w_orig/2, h_orig/2), angle, 1.0)
+                image = cv2.warpAffine(image, M, (w_orig, h_orig), borderMode=cv2.BORDER_REPLICATE)
+
+            # Цветовые искажения
+            if random.random() > 0.5:
+                # Яркость/контраст
+                alpha = random.uniform(0.8, 1.2)  # Контраст [0.8-1.2]
+                beta = random.uniform(-20, 20)     # Яркость [-20, 20]
+                image = cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
+
+            # Гауссов шум
+            if random.random() > 0.3:
+                noise = np.random.normal(0, 5, image.shape).astype(np.uint8)
+                image = cv2.add(image, noise)
+
         x, y, w, h = x/w_orig, y/h_orig, w/w_orig, h/h_orig
         
         # Ресайз изображения к единому размеру

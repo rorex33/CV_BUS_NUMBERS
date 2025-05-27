@@ -66,7 +66,8 @@ def main():
     train_dataset = VehicleDataset(
         root_dir="data/train",  # Путь к обучающим данным
         vocab=config['model']['vocab'],  # Словарь символов
-        image_size=config['image']['size']  # Размер входного изображения
+        image_size=config['image']['size'],  # Размер входного изображения
+        augment=True # Аугментация данных
     )
     
     # Создание DataLoader для батчевой обработки
