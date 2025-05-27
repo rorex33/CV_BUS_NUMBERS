@@ -1,5 +1,6 @@
 import torch
 from multitask_vehicle_model import MultiTaskModel
+import torch.nn as nn
 
 # 1. Конфигурация (должна совпадать с обучением)
 VOCAB = "0123456789ABEKMHOPCTYX"  # 22 символа
