@@ -41,7 +41,7 @@ class MultiTaskModel(nn.Module):
     2. Регрессия bounding box
     3. Распознавание текста (OCR)
     """
-    def __init__(self, num_classes=5, ocr_vocab_size=36 + 1):  # +1 для CTC blank
+    def __init__(self, num_classes=5, ocr_vocab_size=22 + 1):  # +1 для CTC blank
         super().__init__()
         self.num_classes = num_classes
         self.ocr_vocab_size = ocr_vocab_size
