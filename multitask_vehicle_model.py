@@ -41,10 +41,11 @@ class MultiTaskModel(nn.Module):
     2. Регрессия bounding box
     3. Распознавание текста (OCR)
     """
-    def __init__(self, num_classes=5, ocr_vocab_size=22 + 1):  # +1 для CTC blank
+    def __init__(self, num_classes=5, ocr_vocab_size=22 + 1, freeze_cls=True):  # +1 для CTC blank
         super().__init__()
         self.num_classes = num_classes
         self.ocr_vocab_size = ocr_vocab_size
+        self.freeze_cls = freeze_cls  # Флаг заморозки классификации
 
         # ------------------------------------------
         # 1. Общий бэкбон для извлечения признаков
@@ -65,6 +66,14 @@ class MultiTaskModel(nn.Module):
             nn.Flatten(),                  # Вытягивание в вектор
             nn.Linear(512, num_classes)    # Финальная классификация
         )
+
+        if freeze_cls:
+            # Закрепляем параметры классификации
+            for param in self.cls_head.parameters():
+                param.requires_grad = False
+            # Фиксируем выход для одного класса
+            self.register_buffer('fixed_cls_output', torch.zeros(1, num_classes).fill_(-10.0))
+            self.fixed_cls_output[0, 1] = 10.0  # Класс 1 (троллейбус)
 
         # ------------------------------------------
         # 3. Головка детекции bounding box
@@ -104,7 +113,12 @@ class MultiTaskModel(nn.Module):
         features = self.backbone(x)  # [B, 512, 32, 32]
 
         # 2. Классификация транспорта
-        cls_out = self.cls_head(features)  # [B, 5]
+        if self.freeze_cls:
+            # Возвращаем фиксированный выход для класса 1
+            batch_size = x.size(0)
+            cls_out = self.fixed_cls_output.repeat(batch_size, 1)
+        else:
+            cls_out = self.cls_head(features)
 
         # 3. Детекция номера
         bbox_out = self.bbox_head(features)  # [B, 4]
@@ -153,7 +167,10 @@ class MultiTaskModel(nn.Module):
             raise ValueError(f"Shape mismatch: cls_out {cls_out.shape}, cls_target {cls_target.shape}")
         
         # Вычисление потерь
-        loss_cls = F.cross_entropy(cls_out, cls_target)  # Классификация
+        if not self.freeze_cls: # Классификация
+            loss_cls = F.cross_entropy(cls_out, cls_target)
+        else:
+            loss_cls = torch.tensor(0.0, device=cls_out.device)
         loss_bbox = F.smooth_l1_loss(bbox_out, bbox_target)  # Регрессия
         loss_ocr = self.ocr_ctc_loss(ocr_out, ocr_target, ocr_lengths)  # OCR
     

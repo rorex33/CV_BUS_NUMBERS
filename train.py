@@ -51,7 +51,8 @@ def main():
     # Инициализация многозадачной модели
     model = MultiTaskModel(
         num_classes=5,  # Количество классов транспорта
-        ocr_vocab_size=len(config['model']['vocab']) + 1  # Размер словаря OCR + blank символ
+        ocr_vocab_size=len(config['model']['vocab']) + 1, # Размер словаря OCR + blank символ
+        freeze_cls=True # Замораживаем классификацию
     ).to(device)  # Перенос модели на выбранное устройство
     
     # Отключаем autocast для CTC loss
