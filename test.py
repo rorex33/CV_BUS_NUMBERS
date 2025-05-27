@@ -1,28 +1,37 @@
 import torch
 from multitask_vehicle_model import MultiTaskModel
-from dataset import VehicleDataset  # Импортируем для доступа к vocab
 
-# 1. Инициализация модели
+# 1. Конфигурация (должна совпадать с обучением)
+VOCAB = "0123456789ABEKMHOPCTYX"  # 22 символа
+OCR_VOCAB_SIZE = len(VOCAB) + 1  # 23 (22 символа + blank)
+BLANK_INDEX = OCR_VOCAB_SIZE - 1  # blank = 22
+
+# 2. Инициализация модели (с проверкой)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = MultiTaskModel(
-    num_classes=5,  # Должно соответствовать обученной модели
-    ocr_vocab_size=len("0123456789АВЕКМНОРСТУХ") + 1  # +1 для blank символа
+    num_classes=5,
+    ocr_vocab_size=OCR_VOCAB_SIZE  # Важно! Должно быть 23
 ).to(device)
 
-# 2. Загрузка весов (если есть)
+# 3. Улучшенная загрузка весов
 try:
     checkpoint = torch.load("best_model.pth", map_location=device)
+    
+    # Проверка совместимости
+    if checkpoint.get('config', {}).get('model', {}).get('vocab', '') != VOCAB:
+        print("Предупреждение: Словарь в чекпоинте не совпадает с текущим!")
+    
     model.load_state_dict(checkpoint['model_state_dict'])
-    print("Модель успешно загружена")
+    print(f"Модель загружена | Словарь: {VOCAB} | Размер: {OCR_VOCAB_SIZE}")
 except Exception as e:
-    print(f"Ошибка загрузки весов: {e}")
-    print("Будет использована модель со случайными весами")
+    print(f"Ошибка загрузки: {e}")
+    print("Инициализация новых весов...")
+    # Инициализация весов для OCR слоя
+    nn.init.xavier_uniform_(model.ocr_fc.weight)
+    nn.init.zeros_(model.ocr_fc.bias)
 
-# 3. Подготовка словаря OCR
-vocab = "0123456789АВЕКМНОРСТУХ"  # Должен совпадать с обучающим
-
-# 4. Функция декодирования OCR (аналогичная вашей)
-def decode_ctc(pred, vocab, blank_index=36):
+# 4. Исправленная функция декодирования
+def decode_ctc(pred, vocab, blank_index=BLANK_INDEX):  # Используем глобальный blank_index
     if pred.dim() == 3:
         pred = pred.squeeze(0)
     pred = pred.argmax(dim=-1)
@@ -32,44 +41,32 @@ def decode_ctc(pred, vocab, blank_index=36):
     for p in pred:
         p = p.item()
         if p != blank_index and p != prev:
-            result.append(vocab[p])
+            if p < len(vocab):  # Защита от выхода за границы
+                result.append(vocab[p])
         prev = p
     return ''.join(result) if result else "Не распознано"
 
-# 5. Тестовый прогон
-model.eval()  # Переводим модель в режим оценки
-
-# Создаем тестовый тензор (1 изображение, 3 канала, 512x512)
+# 5. Проверочный прогон
+model.eval()
 dummy_input = torch.randn(1, 3, 512, 512).to(device)
 
-with torch.no_grad():
-    cls_out, bbox_out, ocr_out = model(dummy_input)
-    
-    # Анализ результатов
-    print("\n=== Результаты теста ===")
-    print(f"Входной тензор shape: {dummy_input.shape}")
-    print(f"Входные значения диапазон: [{dummy_input.min():.3f}, {dummy_input.max():.3f}]")
-    
-    # Классификация
-    cls_probs = torch.softmax(cls_out, dim=1)
-    print(f"\nКлассификация (shape: {cls_out.shape}):")
-    print(f"Сырые выходы: {cls_out.cpu().numpy()}")
-    print(f"Вероятности: {cls_probs.cpu().numpy()}")
-    print(f"Предсказанный класс: {cls_out.argmax().item()}")
-    
-    # BBox
-    print(f"\nBBox (shape: {bbox_out.shape}):")
-    print(f"Координаты: {bbox_out.squeeze().cpu().numpy()}")
-    print("Проверка диапазона (должен быть [0, 1]):", 
-          torch.all((bbox_out >= 0) & (bbox_out <= 1)).item())
-    
-    # OCR
-    print(f"\nOCR (shape: {ocr_out.shape}):")
-    print(f"Пример выхода: {ocr_out[0, :3, :5].cpu().numpy()}")  # Первые 3 символа
-    print("Декодированный текст:", decode_ctc(ocr_out, vocab))
+print("\n=== Тест модели ===")
+print(f"Ожидаемый размер словаря: {OCR_VOCAB_SIZE}")
+print(f"Фактический ocr_fc.weight: {model.ocr_fc.weight.shape}")  # Должно быть [23, 32]
 
-# 6. Дополнительные проверки
-print("\n=== Проверка архитектуры ===")
-print("Модель на устройстве:", next(model.parameters()).device)
-print("Количество параметров:",
-      sum(p.numel() for p in model.parameters() if p.requires_grad))
+with torch.no_grad():
+    cls, bbox, ocr = model(dummy_input)
+    print("\nВыходы модели:")
+    print(f"OCR shape: {ocr.shape}")  # Должно быть [1, W, 23]
+    
+    # Проверка диапазона выходов
+    print("\nПроверка выходов OCR:")
+    print(f"Мин: {ocr.min().item():.3f} Макс: {ocr.max().item():.3f}")
+    print(f"Blank индекс: {BLANK_INDEX}")
+    
+    # Декодирование
+    print("\nДекодированный текст:", decode_ctc(ocr, VOCAB))
+
+# 6. Валидация архитектуры
+assert model.ocr_fc.out_features == OCR_VOCAB_SIZE, \
+    f"Несоответствие! Модель ожидает {model.ocr_fc.out_features}, а должно быть {OCR_VOCAB_SIZE}"

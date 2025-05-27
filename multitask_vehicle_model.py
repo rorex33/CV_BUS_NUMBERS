@@ -258,5 +258,5 @@ class MultiTaskModel(nn.Module):
 
     def decode_plate(self, char_indices):
         """Преобразование индексов в строку с фильтрацией blank символов"""
-        chars = "0123456789АВЕКМНОРСТУХ"  # Словарь символов
+        chars = "0123456789ABEKMHOPCTYX"  # Словарь символов
         return ''.join([chars[i] for i in char_indices if i < len(chars)])

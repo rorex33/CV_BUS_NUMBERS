@@ -64,7 +64,7 @@ def main():
     # ------------------------------
     # Создание датасета для обучения
     train_dataset = VehicleDataset(
-        root_dir="data/train",  # Путь к обучающим данным
+        root_dir="E:\IT\data",  # Путь к обучающим данным
         vocab=config['model']['vocab'],  # Словарь символов
         image_size=config['image']['size'],  # Размер входного изображения
         augment=True # Аугментация данных
