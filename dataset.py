@@ -110,33 +110,48 @@ class VehicleDataset(Dataset):
         # Нормализация координат bbox к относительным значениям [0, 1]
         h_orig, w_orig = image.shape[:2]
 
+        # Проверка исходных координат
+        if not (0 <= x <= 1 and 0 <= y <= 1 and 0 < w <= 1 and 0 < h <= 1):
+            print(f"Invalid initial bbox in {img_name}: x={x}, y={y}, w={w}, h={h}")
+            return self[random.randint(0, len(self)-1)]
+
+        # Конвертация в абсолютные координаты для аугментаций
+        x_abs, y_abs = x * w_orig, y * h_orig
+        w_abs, h_abs = w * w_orig, h * h_orig
+
         # Аугментация
         if self.augment:
             # Случайное отражение по горизонтали (50% chance)
             if random.random() > 0.5:
                 image = cv2.flip(image, 1)
-                x = 1.0 - x  # Корректируем bbox
+                x_abs = w_orig - x_abs  # Корректируем bbox
 
             # Случайный поворот (+/- 15 градусов)
             if random.random() > 0.7:
                 angle = random.uniform(-15, 15)
                 M = cv2.getRotationMatrix2D((w_orig/2, h_orig/2), angle, 1.0)
-                image = cv2.warpAffine(image, M, (w_orig, h_orig), borderMode=cv2.BORDER_REPLICATE)
+                image = cv2.warpAffine(image, M, (w_orig, h_orig))
+                
+                # Обновляем координаты bbox
+                corners = np.array([
+                    [x_abs - w_abs/2, y_abs - h_abs/2, 1],
+                    [x_abs + w_abs/2, y_abs - h_abs/2, 1],
+                    [x_abs + w_abs/2, y_abs + h_abs/2, 1],
+                    [x_abs - w_abs/2, y_abs + h_abs/2, 1]
+                ])
+                new_corners = M.dot(corners.T).T
+                x1, y1 = new_corners[:, 0].min(), new_corners[:, 1].min()
+                x2, y2 = new_corners[:, 0].max(), new_corners[:, 1].max()
+                x_abs, y_abs = (x1 + x2)/2, (y1 + y2)/2
+                w_abs, h_abs = x2 - x1, y2 - y1
 
-            # Цветовые искажения
-            if random.random() > 0.5:
-                # Яркость/контраст
-                alpha = random.uniform(0.8, 1.2)  # Контраст [0.8-1.2]
-                beta = random.uniform(-20, 20)     # Яркость [-20, 20]
-                image = cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
-
-            # Гауссов шум
-            if random.random() > 0.3:
-                noise = np.random.normal(0, 5, image.shape).astype(np.uint8)
-                image = cv2.add(image, noise)
-
-        x, y, w, h = x/w_orig, y/h_orig, w/w_orig, h/h_orig
+        # Возвращаем к нормализованным координатам
+        x, y, w, h = x_abs/w_orig, y_abs/h_orig, w_abs/w_orig, h_abs/h_orig
         
+        # Финалная проверка
+        if not (0 <= x <= 1 and 0 <= y <= 1 and 0 < w <= 1 and 0 < h <= 1):
+            return self[random.randint(0, len(self)-1)]
+
         # Ресайз изображения к единому размеру
         image = cv2.resize(image, (self.image_size, self.image_size))
         
