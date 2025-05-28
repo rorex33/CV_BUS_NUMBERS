@@ -81,14 +81,8 @@ class MultiTaskModel(nn.Module):
         # ------------------------------------------
         self.bbox_head = nn.Sequential(
             nn.Conv2d(512, 64, 3, padding=1),  # Локальные признаки
-            nn.ReLU(),
-            nn.Conv2d(256, 128, 3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(128, 64, 3, padding=1),
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(64, 4),        # Регрессия координат
+            nn.Linear(64 * 32 * 32, 4),        # Регрессия координат
             nn.Sigmoid()                       # Нормализация в [0, 1]
         )
 
